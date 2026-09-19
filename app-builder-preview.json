@@ -1,0 +1,36 @@
+{
+  "url": "http://127.0.0.1:8080/",
+  "viewports": {
+    "desktop": {
+      "width": 1280,
+      "height": 800,
+      "status": 200,
+      "title": "StudyReport AI",
+      "hasCanvas": false,
+      "bodyTextLen": 1012,
+      "bodyTextHash": "786b249765604d1ee5e5578a2a723317c52e7a66993d020934efbd5692303a9c",
+      "bodyTextPrefix": "STUDYREPORT AI Enter your name Reports, streaks, and XP will be ",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/app-builder-preview.png"
+    },
+    "mobile": {
+      "width": 390,
+      "height": 844,
+      "status": 200,
+      "title": "StudyReport AI",
+      "hasCanvas": false,
+      "bodyTextLen": 1000,
+      "bodyTextHash": "d8595a1ce9f8169386050a542d8637fc1cf95d78d64176d0b6327ffd2ec2bd4d",
+      "bodyTextPrefix": "STUDYREPORT AI Enter your name Reports, streaks, and XP will be ",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/app-builder-preview-mobile.png"
+    }
+  },
+  "brandWarnings": [],
+  "authWarnings": [],
+  "verdictFile": "/workspace/screenshots/app-builder-preview.json"
+}
