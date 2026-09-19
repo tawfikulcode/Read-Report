@@ -1,213 +1,120 @@
 ---
-name: building-games
+name: generate2dmap
 description: >
-  Build browser games and interactive/canvas/3D experiences in this TanStack
-  Start + React app. Use for any game, simulation, or WebGL/Canvas experience —
-  2D or 3D, single-player. Covers the game loop & timing, 3D orientation/camera
-  conventions, collision, performance, assets, audio, save, game feel, and
-  per-genre playbooks. For WASD / vehicle / flight **input signs and inverted
-  A/D**, open the **`controls`** skill — do not rely on this file or racing-kart
-  alone. Triggers on "game", "minecraft", "fps", "platformer", "racing",
-  "tetris", "snake", "shooter", "3d", "three.js", "canvas", "voxel", "physics".
+  Generate production-oriented 2D game maps with `imagine_text_to_image`: RPG/top-down maps,
+  side-scroller parallax stages, tilemaps, layered raster maps, prop packs,
+  collision zones, and walkable areas. Use when building browser games that
+  need real map art (not pure code-drawn tiles), layered props, or map
+  collision metadata. Triggers on "map", "level", "stage", "tilemap",
+  "overworld", "dungeon", "side scroller background", "prop pack", "2D map".
 metadata:
-  short-description: "Browser games: loop, 3D orientation, camera, perf, assets, genres"
+  short-description: "2D game maps: layered art, props, collision metadata"
 user-invocable: false
 ---
 
-# Building Games
+# Generate2dmap
 
-Build a **playable, correct** browser game — not a static screenshot. A game is
-just a React route with a `<canvas>` (or `<Canvas>` for R3F) plus DOM overlay UI.
-Style the overlay (start screen, HUD, menus) with the **`design-ui`** skill; this
-skill owns the gameplay loop and world.
+## App-builder / Grok environment
 
-**Controls / inverted A/D:** open **`.grok/skills/controls/SKILL.md`** **before**
-writing WASD, steering, or flight input. Vehicle/flight demos often ship with
-A/D flipped if you only read this file or a single genre playbook.
+| Item | Value |
+| --- | --- |
+| Skill dir / scripts | `.grok/skills/generate2dmap/`, run as `python3 .grok/skills/generate2dmap/scripts/<script>.py …` |
+| Image tools | `imagine_text_to_image` / `imagine_image_to_image` (path-based; see **`imagine`**); inspect output with `read_file` on the PNG path (not Codex view_image) |
+| Generated image path | `imagine_text_to_image` → sandbox `file_path` → copy into `assets/map/`; Pillow is preinstalled |
+| Default `engine_target` | `raw_canvas` or `Phaser` for this TanStack browser sandbox — only use Godot/Unity/Tiled when the user explicitly wants those exports |
+| Related skills | **`generate2dsprite`** (character/FX sprites; prop packs still use this skill's extract script), **`building-games`**, **`imagine`** |
 
-**Scope note — single-player, bots, or small P2P co-op:**
-- Ship **single-player** or **single-player + AI/bots** by default.
-- **2–8 player co-op / casual realtime** (shared cursors, party games, casual
-  action among friends) is supported — use the **`multiplayer-p2p` skill**
-  (WebRTC mesh, signaled at `/api/rtc`). Read its trust model first.
-- P2P is the only supported multiplayer right now. Do not half-build sockets
-  that can’t connect.
+## Decide the pipeline first
 
-**References (load on demand):**
-- **`controls` skill** (`../controls/`) — **required** for movement/steer/flight:
-  player-visible A/D, inverted-steer anti-pattern, flight ailerons, mandatory
-  self-test + `window.__controlsTest`. Not optional for vehicles/planes.
-- `references/threejs-foundational.md` — the deep 3D/loop/perf reference. Read for 3D.
-- `references/3d-libs.md` — three.js + @react-three/fiber + drei + rapier usage.
-- **`threejs` skill** (`../threejs/`) — official full Three.js + TSL API dump
-  (`llms-full.txt`). Load for advanced materials/shaders/WebGPU/loaders; not for
-  simple 2D canvas games.
-- `references/babylon.md` — Babylon.js, the batteries-included 3D engine alternative.
-- `references/phaser.md` — Phaser 3, the default engine for 2D games.
-- `references/ecs-architecture.md` — entity-component-system structure for larger games.
-- `references/genres/*.md` — per-genre playbooks (fps, platformer-2d, racing-kart,
-  puzzle-match3-tetris, voxel-minecraft, endless-runner, topdown-twin-stick,
-  tower-defense, board-card-chess). Genre files **do not** replace **`controls`**.
-- `references/game-feel-juice.md`, `input.md`, `audio.md`, `collision-physics.md`,
-  `save-persistence.md`, `procedural-generation.md`, `ai-pathfinding.md`.
-- **`game-asset-core`** (+ `game-animation-frames` / `game-tilesets` /
-  `game-character-consistency` / `game-ui-icons`) — engine-ready 2D art defaults
-  and verification when generating sprites, sheets, tiles, or UI (see §6).
+Build the smallest playable map bundle that satisfies the game: choose a
+product-level `map_mode`, then the lower-level axes (`visual_model`,
+`runtime_object_model`, `collision_model`, `engine_target`).
 
-Pick the specific genre/topic reference for the build; this file is the universal
-core for loop/world. **Input signs → `controls`.** **2D game art → `game-asset-core`.**
+- `tile_mode` — editable tile/grid maps: Pokemon-like routes, top-down RPG towns, platformer tilemaps, or any project already on Tiled/LDtk/Godot/Unity/Phaser tilemaps.
+- `scene_mode` — foundation base plus separate props: tower defense, survivors-like arenas, cozy top-down showcase maps.
+- `side_scroll_mode` — parallax side-scroller stages: Mega Man-like, action platformers, Metroidvania rooms, runners, brawlers.
+- `grid_mode` — rule-heavy grids: tactical RPGs, factory/automation, board/card battlers, build grids.
+- `room_chunk_mode` — modular rooms/chunks: roguelike dungeons, Metroidvania networks, procedural assembly.
+- `baked_scene_mode` — explicitly flat, non-playable scenes only: title/menu screens, battle backdrops, visual-novel scenes, concept art.
 
----
+Use user-specified parameters when present; otherwise infer the lightest playable
+pipeline from the existing game, camera, collision needs, map scale, and editing
+needs. When mode and axes disagree, the mode's playable/editable contract wins.
+Genre routing, per-mode axis defaults, presets, and the escalation heuristic are in
+`references/map-strategies.md` — read it whenever the choice is not obvious.
 
-## 1. Game loop & timing (the #1 correctness issue)
+**A playable map is never one baked image.** For any request implying a playable
+map, level, stage, room, prototype, or engine scene, the deliverable must expose
+gameplay geometry and objects as separate layers, props, tile/object data,
+collision, zones, or engine-native scene nodes. A baked image may be a background,
+reference, or preview artifact — never the runtime map — unless the user
+explicitly asked for a flat background only.
 
-- Drive the loop with the engine's RAF loop (`renderer.setAnimationLoop`, R3F
-  `useFrame`, or `requestAnimationFrame` for 2D canvas). **Never** `setInterval`/
-  `setTimeout`/`Date.now()` for game timing.
-- **Scale ALL movement/animation by delta time** (seconds) so speed is frame-rate
-  independent (60Hz vs 144Hz). Compute delta **once per frame** and reuse it.
-  - three.js: use `THREE.Timer` (not `Clock` — `Clock.getDelta()` returns ~0 on a
-    second call in the same frame, a classic freeze bug).
-- **Cap delta** (`min(delta, 0.1)`) so a backgrounded tab doesn't teleport things.
-- **Fixed timestep for physics/gameplay:** accumulate delta and step simulation at
-  a fixed rate (e.g. 1/60) while rendering at display rate — prevents tunneling and
-  non-determinism.
+**Scenes and maps only.** Do not generate character, enemy, boss, NPC, player,
+projectile, or animation sprites here; those belong to `$generate2dsprite`. Maps
+carry scene hooks (spawn markers, patrol/encounter zones, arena entrances, gates,
+exits, camera triggers) as **metadata**, not as drawn art.
 
-## 2. Controls (delegate to the `controls` skill)
+## Art comes from image generation, and you write the prompts
 
-**Open `.grok/skills/controls/SKILL.md` before implementing any WASD / steer /
-flight code.** That skill is the source of truth for:
+- `imagine_text_to_image` is the default art source for base maps, parallax plates,
+  references, prop sheets, and tileset art. Default `art_style` is `clean_hd`
+  (hand-painted HD, sharp readable shapes, low texture noise, no chunky pixels);
+  use `pixel_inspired` or `retro_pixel` only when asked.
+- **Write every creative prompt yourself.** Scripts may assemble, slice,
+  chroma-key, crop, validate, compose previews, and emit JSON/engine files — never
+  write creative prompts or draw final art. Procedural/placeholder art only when
+  the user explicitly asks for placeholders, fixtures, debug maps, or scaffolding.
+  With a tile engine target, generate the tileset art first, then script only the
+  layers, collision, zones, and scene wiring.
+- Save each prompt beside its asset as `<asset>.prompt.txt` (or an explicit
+  manifest field) whenever the run creates new visual assets.
+- **A reference handoff is a file path, not a sentence.** To build on an earlier
+  image, pass its sandbox `file_path` to `imagine_image_to_image` (and `read_file`
+  it so you can see it), then name the concrete features to preserve: camera
+  framing, horizon, road/water shapes, terrain boundaries, entrances/exits,
+  landmarks. A filename, "based on the map", or the image merely being visible in
+  conversation is **not** a handoff — stop and pass the path.
 
-- Player-visible **A = left / D = right** (chase cam, while moving forward)
-- Why **`KeyA → steer−` + `yaw += steer * +rate` inverts** (most common bug)
-- Vehicle vs FPS (strafe ≠ steer), fixed-wing ailerons, heli/drone notes
-- Mandatory self-test + `window.__controlsTest` probe
+## Keep runtime objects out of the base layer
 
-Do **not** treat `genres/racing-kart.md` as the only place steer signs live —
-planes, jetskis, and mechs never open it.
+The first generated base/background/foundation image may hold only stable, non-interactive
+foundation art — ground material, paths, roads, water, cliffs, floor patterns, lane
+markings and build pads; for side views sky, far/mid scenery, silhouettes, atmosphere; for
+tilemaps tileset art as editable layers. It must **not** contain tall props, buildings,
+trees, rocks, crates, signs, doors, gates, pickups, chests, checkpoints, hazards, traps,
+turrets, ladders, foreground occluders, destructibles, actors, enemies, NPCs, UI, labels,
+or anything needing collision, interaction, reuse, y-sorting, animation, or its own render
+order — regenerate a foundation-only base, or demote such an image to a reference
+artifact.
 
-**Short reminder (full detail in `controls`):**
+## Reference mockups are checkpoints, not deliverables
 
-```
-// Vehicle yaw body (chase cam): A must increase yaw with this basis
-forward = (-sin(yaw), 0, -cos(yaw))
-// KeyA → steer = +1;  yaw += steer * turnRate * speedFactor * dt
-// WRONG (ships inverted): KeyA → steer = -1; yaw += steer * turnRate * dt
-```
+Dressed references (top-down) and stage references (side-view) plan placement in-world:
+natural game-world objects or subtle blockout geometry, at most **9 distinct visible
+object candidates** (repeats count once, then recur in placement metadata), **no
+annotation graphics** (circles, arrows, outlines, labels, text, callouts, legends,
+measurement lines), and no non-visual metadata — spawns, triggers, patrol hints, camera
+bounds are written later as scene hooks.
 
-- **Pointer lock:** mouse-look only — implement WASD yourself; click-to-play
-  overlay; dismiss on lock.
-- Track keys with held state + **dt**; unify devices via `references/input.md`.
-- **Finish:** run the `controls` skill checklist. Screenshot-only is insufficient
-  for vehicles/flight.
+**Having generated one, do not stop there.** Continue through
+`references/object-production-gate.md`: re-`read_file` both images, build the object
+list, generate the final separate objects, write placement / collision / scene-hook
+metadata, compose the QA preview. Reference-only output is an incomplete run unless
+the user explicitly asked for a concept image.
 
-## 3. 3D orientation & world objects (the "sideways/backwards" bugs)
+## Depth for the pipeline you picked — open these before producing assets
 
-- three.js is **right-handed, +Y up**: +X right, +Y up, +Z toward viewer. **Meshes
-  face +Z; cameras look −Z** (the classic "camera backwards" gotcha).
-- Primitives like `Cone`/`Cylinder` point **+Y** by default → rotate to align a
-  tip with forward (`geo.rotateX(Math.PI/2)`).
-- **Orienting a mesh to face `forward`** (meshes face **+Z**): simplest correct way
-  is `mesh.lookAt(mesh.position.clone().add(forward))`. To build the basis by hand,
-  set the **+Z column to `forward`** and choose the x-axis that keeps it a *proper*
-  right-handed rotation (`det = +1`):
-  `xAxis = normalize(cross(up, forward))`, then `makeBasis(xAxis, up, forward)`.
-  Note this is `cross(up, forward)` — **not** the movement `right = cross(forward, up)`
-  from §2. Targeting +Z (instead of a camera's −Z) flips the x-axis sign so that
-  `xAxis × up = forward`; the frame stays right-handed (no mirroring). Do **not** use
-  `makeBasis(xAxis, up, -forward)` for a mesh — that targets −forward (the *camera*
-  convention) so the mesh faces **backwards**.
-- **Orienting a camera** to look along `forward` (cameras look **−Z**): set the +Z
-  column to `-forward` — `xAxis = normalize(cross(forward, up))`, then
-  `makeBasis(xAxis, up, -forward)` (or just `camera.lookAt(target)`).
-- Keep a consistent world `up` so objects stay upright; only rotate flat primitives
-  to stand up.
-- Verify glTF import orientation; debug with `AxesHelper`/`ArrowHelper`. Upright
-  self-test: characters stand on the ground plane, not lying/sunk.
-
-## 4. Camera must agree with movement
-
-- Keep a **dedicated `moveForward`/`moveRight`** for movement, computed once and
-  never mutated by camera code (aliasing a shared temp vector makes camera and
-  movement disagree — a real repro bug).
-- Third-person follow: `desired = playerPos + up*height + moveForward*(-followDist)`;
-  lerp the camera toward it (use exp-based smoothing, delta-scaled), `lookAt(player)`.
-- Isolate-the-layer debug order: (1) keys register → (2) movement signs correct →
-  (3) camera agrees. Fix in that order.
-
-## 5. Performance
-
-- **Minimize draw calls** (`renderer.info.render.calls`, target <100): share
-  materials, `InstancedMesh`/`BatchedMesh` for repeated objects, atlases.
-- **Dispose GPU resources yourself** (`geometry/material/texture.dispose()`) on
-  level change — three.js does not GC them. **Pool** bullets/enemies/particles.
-- No per-frame allocations (reuse temp vectors). Compress textures; LOD for distance.
-
-## 6. Assets (avoid the generated-photo trap)
-
-- **Interactive 3D elements** (weapon viewmodels, characters, props, projectiles)
-  → build from **3D geometry / glTF**, not a generated image. A flat photorealistic
-  JPG of a gun-in-hands used as an FPS viewmodel looks wrong, can't animate, and
-  (JPG has **no alpha**) renders as a black box. Parent a real 3D viewmodel to the
-  camera as an overlay render layer.
-- Reserve image generation for **flat 2D** assets only (textures, sky/menu
-  backgrounds, 2D sprites, UI art). **Never** use a generated photo as a 3D mesh,
-  viewmodel, or character substitute — build those in 3D geometry / glTF.
-  Set `crossOrigin="anonymous"` on images drawn to canvas/textures.
-  See the **`imagine`** skill (2D only — image tools cannot produce real 3D).
-- **Engine-ready game art doctrine** → open **`game-asset-core`**
-  (`../game-asset-core/`) for defaults + blind verify + retry discipline, then the
-  matching specialist: **`game-animation-frames`** (loop / motion laws),
-  **`game-tilesets`**, **`game-character-consistency`**, **`game-ui-icons`**.
-  These are **QC/doctrine**, not the export pipeline. Do not ship stick-figure
-  placeholders when real art is expected.
-- **2D game sprites / animation sheets** → run **`generate2dsprite`**
-  (`.grok/skills/generate2dsprite/SKILL.md`): solid **`#FF00FF`** magenta
-  `imagine_text_to_image` sheets + chroma postprocess scripts (magenta is required for the
-  processor). Wire transparent PNGs/GIFs into Canvas/Phaser. Still apply
-  **`game-asset-core`** (+ animation/character specialists when relevant).
-- **2D maps / levels / prop packs** → open **`generate2dmap`**
-  (`.grok/skills/generate2dmap/SKILL.md`). Prefer foundation-only base + separate
-  props/collision for playable maps. Browser default: `raw_canvas` / Phaser.
-  Tileable ground/walls → also **`game-tilesets`** for 2×2 seam checks.
-- **Optional denser locomotion** → run **`video2dsprite`** (Grok
-  `imagine_image_to_video` + sandbox scripts; magenta base). Prefer `generate2dsprite`
-  for crisp production heroes. Use **`game-animation-frames`** for loop/flip-test
-  laws; prefer **`video2dsprite`** over ad-hoc ffmpeg-only harvest in this
-  sandbox.
-
-## 7. Audio, save, feel
-- **Audio**: unlock `AudioContext` on the first user gesture (tap-to-start) or iOS
-  is silent; re-resume on `visibilitychange`. (`references/audio.md`)
-- **Save**: `localStorage`/IndexedDB with a `version` field + migrations.
-- **Juice**: screen shake, hit-stop, eased tweens, particles — cheap, huge
-  perceived-quality lift. Keep presentation separate from simulation.
-
-## 8. Mobile
-- Distinguish canvas buffer size from CSS size; respect `devicePixelRatio`.
-- `touch-action: none`, letterbox-fit to a base resolution, handle orientation.
-- Touch controls (virtual joystick + action buttons), ≥44px targets.
-
----
-
-## Stack / engine choice
-- **3D → three.js**, ideally via **@react-three/fiber + drei** (fits the React
-  app; drei gives pointer-lock/controls/loaders) + **@react-three/rapier** for
-  physics/character controllers. See `references/3d-libs.md`.
-- **2D →** native Canvas 2D is enough for snake/tetris/flappy/platformer; reach for
-  Phaser only when the genre needs it.
-- These game deps are **not preinstalled** — `npm install` them (and make sure they
-  land in `package.json` so the Vercel build has them).
-
-## Finish criteria (before "done")
-- Loads with **no console errors**; visible gameplay (not a blank canvas).
-- **`controls` skill self-test passed** (A = left / D = right from chase cam
-  while moving forward; flip one sign if inverted). Not screenshot-only.
-- 3D upright & camera-agrees self-tests pass (§3, §4).
-- Runs on mobile viewport with touch controls.
-- Production build (`npm run build`) renders the built output, not just dev.
-- **Share / X card:** open the **`og`** skill — custom `public/og.jpg` **and**
-  `"type": "x:game"` in `src/lib/og/site.json`. X uses `og:type="x:game"`
-  to present the unfurl as a game card; do not use `twitter:card` or invent
-  `x:type` for this. `browser-smoke` / `brand-check` warn when canvas apps omit
-  the `site.json` field.
+- Layered raster maps → `references/layered-map-contract.md` (layer types, base and
+  prop prompt patterns, prop metadata, render order, collision, QA checklist).
+- `side_scroll_mode` → `references/side-scroll-stages.md`: the `stage_canvas`
+  decision, the named scenery-only parallax layers, and the mandatory in-world
+  stage reference before any platform/object work.
+- Any prop or scene-object generation → classify each object first, then follow
+  `references/prop-pack-contract.md`: only compact props may share a square prop
+  pack; platforms, floors, bridges, gates, buildings and anything collision-aligned
+  go one-by-one, as a platform strip, a custom wide pack, or tile/object layers.
+- Parameters, the step-by-step workflow, and the `extract_prop_pack.py` /
+  `compose_layered_preview.py` commands → `references/pipeline.md`.
+- Deliverable lists per pipeline and the validation checklist →
+  `references/deliverables.md`; run both before calling a map done.
